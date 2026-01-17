@@ -1,4 +1,6 @@
 # Wolai Connector for Power BI
+<img width="74" height="34" alt="image" src="https://github.com/user-attachments/assets/fa594040-3169-4a31-9ace-e4a6722879ae" />
+
 
 这个自定义连接器允许 Power BI 直接连接到 Wolai 数据库并导入数据。
 
