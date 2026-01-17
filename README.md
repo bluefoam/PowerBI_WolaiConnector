@@ -1,4 +1,4 @@
-# Wolai Connector for Power BI
+# Wolai DB Connector for Power BI
 <img width="74" height="34" alt="image" src="https://github.com/user-attachments/assets/fa594040-3169-4a31-9ace-e4a6722879ae" />
 
 
