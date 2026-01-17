@@ -206,11 +206,23 @@ GetDatabaseContent = (token, database_id, optional debug_mode as logical) =>
         // 分页获取函数
         FetchPage = (optional cursor as text) =>
             let
+                // 遵守 API 频率限制 (5次/秒)，每次请求延迟 200ms
+                // 注意：Power Query 的并发通常较低，但为了保险起见增加延迟
+                WaitForRateLimit = Function.InvokeAfter(
+                    () => true, 
+                    #duration(0, 0, 0, 0.2)
+                ),
+
                 query = [
-                    page_size = "100"  // 尝试限制每页数量以避免超时
+                    // 减小 page_size 以避免 504 Gateway Time-out
+                    // 虽然 API 允许 200，但为了稳定性设置为 50
+                    page_size = "50" 
                 ],
                 finalQuery = if cursor <> null and cursor <> "" then Record.AddField(query, "start_cursor", cursor) else query,
                 
+                // 执行延迟
+                _ = WaitForRateLimit,
+
                 response = Web.Contents(
                     "https://openapi.wolai.com/v1/databases/" & database_id,
                     [
