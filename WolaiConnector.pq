@@ -116,39 +116,6 @@ GetWolaiToken = (app_id as text, app_secret as text) =>
     in
         token;
 
-// 辅助函数：带重试机制的 Web 请求
-// 用于处理 429 (Too Many Requests) 和 5xx (Server Errors)
-Web.ContentsWithRetry = (url as text, options as record) =>
-    let
-        // 最大的重试次数
-        MaxRetries = 5,
-        
-        // 执行请求的内部函数
-        ExecuteRequest = (retryCount as number) =>
-            let
-                // 增加 ManualStatusHandling 以便手动处理状态码
-                newOptions = options & [ManualStatusHandling = {429, 500, 502, 503, 504}],
-                
-                // 如果是重试，进行延迟 (指数退避: 1s, 2s, 4s, 8s, 16s)
-                _ = if retryCount > 0 then Function.InvokeAfter(() => null, #duration(0,0,0, Number.Power(2, retryCount - 1))) else null,
-                
-                response = Web.Contents(url, newOptions),
-                meta = Value.Metadata(response),
-                status = meta[Response.Status]
-            in
-                if List.Contains({429, 500, 502, 503, 504}, status) then
-                    if retryCount < MaxRetries then
-                        // 递归重试
-                        ExecuteRequest(retryCount + 1)
-                    else
-                        // 超过重试次数，返回错误
-                        error Error.Record("DataSource.Error", "Request failed after multiple retries. Status: " & Text.From(status), Text.FromBinary(response))
-                else
-                    // 成功或其他错误，直接返回响应（Web.Contents 会自动处理其他 4xx 错误）
-                    response
-    in
-        ExecuteRequest(0);
-
 // 获取所有数据库列表并生成导航表（基于用户提供的列表参数）
 GetDatabases = (token as text, optional databaseListText as nullable text) as table =>
     let
@@ -239,14 +206,24 @@ GetDatabaseContent = (token, database_id, optional debug_mode as logical) =>
         // 分页获取函数
         FetchPage = (optional cursor as text) =>
             let
+                // 遵守 API 频率限制 (5次/秒)，每次请求延迟 200ms
+                // 注意：Power Query 的并发通常较低，但为了保险起见增加延迟
+                WaitForRateLimit = Function.InvokeAfter(
+                    () => true, 
+                    #duration(0, 0, 0, 0.2)
+                ),
+
                 query = [
-                    // 恢复 page_size 为 100，利用自动重试机制处理超时
-                    page_size = "100" 
+                    // 减小 page_size 以避免 504 Gateway Time-out
+                    // 虽然 API 允许 200，但为了稳定性设置为 50
+                    page_size = "50" 
                 ],
                 finalQuery = if cursor <> null and cursor <> "" then Record.AddField(query, "start_cursor", cursor) else query,
                 
-                // 使用带重试机制的请求函数
-                response = Web.ContentsWithRetry(
+                // 执行延迟
+                _ = WaitForRateLimit,
+
+                response = Web.Contents(
                     "https://openapi.wolai.com/v1/databases/" & database_id,
                     [
                         Headers = [
